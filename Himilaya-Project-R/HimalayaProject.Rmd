@@ -1,0 +1,245 @@
+---
+title: "Himalayan Project"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(glmnet)
+Him <- read.csv("himdata.csv")
+options(scipen=1000000)
+```
+
+```{r}
+#Generates count variable
+Him$count <- 1
+
+# Summarize and filter the data (only selecting mountains with over 200 total expedition summits)
+Him_summary <- Him %>%
+  group_by(peakid) %>%
+  summarise(tot_smts = sum(count, na.rm = TRUE)) %>%
+  filter(tot_smts >= 200) %>%
+  ungroup()
+
+# Join the filtered summary back to the original data
+Him_filtered <- Him %>%
+semi_join(Him_summary, by = "peakid")
+
+#Generates number of variables 
+Him_filtered$totalgroup <- Him_filtered$totmembers+Him_filtered$tothired
+Him_filtered$hiredratio <- Him_filtered$tothired/Him_filtered$totalgroup
+Him_filtered$summitrate <- Him_filtered$smtmembers/Him_filtered$totmembers
+Him_filtered$totdeath <- Him_filtered$mdeaths + Him_filtered $hdeaths
+Him_filtered$deathrate <- Him_filtered$totdeath / Him_filtered$totalgroup
+
+#Generating Success variable
+Him_filtered$success1 <- as.numeric(Him_filtered$success1)
+colnames(Him_filtered)[colnames(Him_filtered) == "success1"] <- "summit"
+
+#Converting variables to factor
+Him_filtered$peakid <- as.factor(Him_filtered$peakid)
+Him_filtered$host <- as.factor(Him_filtered$host)
+Him_filtered$season <- as.factor(Him_filtered$season)
+
+#Generates yearly mountain congestion variable
+congestion <- Him_filtered %>%
+  group_by(year, peakid) %>%
+  summarise(total_members = sum(totalgroup, na.rm = TRUE)) %>%
+  ungroup()
+
+#Joins congestion to full dataset
+Him_filtered <- Him_filtered %>%
+  left_join(congestion, by = c("peakid", "year"))
+
+#Drops NA for hired ratio variable
+Him_filtered <- Him_filtered %>% filter(!is.na(hiredratio))
+Him_filtered <- Him_filtered %>% filter(!is.na(total_members))
+```
+
+```{r}
+#Creating Routes Variable
+
+Him_filtered$route1 <- as.factor(Him_filtered$route1)
+
+route_counts <- Him_filtered %>%
+  group_by(peakid, route1) %>%
+  summarise(counts = n(), .groups = 'drop')
+
+average_counts <- route_counts %>%
+  group_by(peakid) %>%
+  summarise(avg_count = mean(counts), .groups = 'drop')
+
+# Join average_counts back to route_counts
+route_counts <- route_counts %>%
+  left_join(average_counts, by = "peakid")
+
+route_counts$counts <- as.numeric(route_counts$counts)
+
+# Join the enhanced route_counts to Him_filtered
+Him_filtered <- Him_filtered %>%
+  left_join(route_counts, by = c("peakid", "route1"))
+
+#Creates Routes (0/1) variable
+Him_filtered$routes <- ifelse(Him_filtered$counts >= Him_filtered$avg_count,1,0)
+
+
+# Removes count and avg_count to Him_filtered
+Him_filtered <- Him_filtered %>%
+  select(-counts, -avg_count)  # Optionally remove the extra columns
+```
+
+```{r}
+table(Him_filtered$summit, Him_filtered$routes)
+```
+
+```{r}
+#Generating test and training sets
+set.seed(17)
+train <- sample(1:nrow(Him_filtered), nrow(Him_filtered) / 2)
+test <- setdiff(1:nrow(Him_filtered), train)
+```
+
+```{r}
+#Lasso Regression Setup
+
+#Creates x - independent variables
+x <-model.matrix( ~ peakid + year + season + host + smtdays + camps + totmembers + o2used + rope + total_members + hiredratio + routes, data = Him_filtered)
+#Standardizes predictors for quant. predictors
+x[, c(11, 17, 18, 19, 21, 22, 23)] <- scale(x[, c(11, 17, 18, 19, 21, 22, 23)])
+stx <- scale(x[,])
+#Creates y - dependent variable
+y <- Him_filtered$summit
+y.test <- y[test]
+#Creates grid of lambda values
+grid <- 10^seq(10,-2, length = 100)
+```
+
+```{r}
+lasso.mod <- glmnet(x[train, ], y[train], alpha = 1, family = binomial, lambda = grid)
+plot(lasso.mod, xvar = "lambda",label=TRUE, xlim = c(-5,0))
+abline(v = -3.28166442109, col = "blue", lwd = 1, lty = 2)
+```
+
+```{r}
+#Finds best value of lambda
+cv.out <- cv.glmnet(x[train, ], y[train], alpha = 1)
+bestlam <- cv.out$lambda.min
+plot(cv.out)
+```
+
+```{r}
+# INSERT FUNCTION and finds test MSE
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x[test, ])
+mean((lasso.pred - y.test)^2)
+```
+
+```{r}
+# Converts prediction class to (0/1)
+predicted_classes <- ifelse(lasso.pred > 0.5, 1, 0)
+# Confusion Matrix
+table(y.test,predicted_classes)
+# Returns classification error rate of 29.72%
+```
+
+```{r}
+out <- glmnet(x, y, alpha = 1, lambda = grid)
+lasso.coef <- predict(out, type = "coefficients", s = bestlam)[1:25,]
+lasso.coef
+```
+
+```{r}
+#Logistic regression fit (Without lasso)
+glm.fit <- glm(y[train] ~ x[train, ], data = Him_filtered,family=binomial)
+glm.pred <- predict(glm.fit, Him_filtered[test, ], type = "response")
+GLM <- ifelse(glm.pred > 0.5, 1, 0)
+cooltable <- table(y.test,GLM)
+#Returns a cassification error rate of 47.39%
+```
+
+```{r}
+
+# Assuming Him_filtered is your dataframe
+# Step 1: Prepare the data
+Him_plot1 <- Him_filtered %>%
+  mutate(total_members_range = cut(total_members, breaks = seq(0, 1300, by = 100), include.lowest = TRUE)) %>%
+  group_by(total_members_range, summit) %>%
+  summarise(freq = n(), .groups = 'drop')
+
+Him_plot1$xlabel <- ordered(c("0,100","0,100", "100,200","100,200", "200,300","200,300", "300,400","300,400", "400,500","400,500", "500,600","500,600", "600,700","600,700", "700,800","700,800", "800,900","800,900", "900,1000","900,1000", "1000,1100","1000,1100", "1100,1200","1100,1200", "1200,1300", "1200,1300"))
+
+# Extract the first number from each range
+first_numbers <- as.numeric(gsub(",.*", "", levels(Him_plot1$xlabel)))
+
+# Create a new ordered factor with levels sorted by the first number
+Him_plot1$xlabel <- factor(Him_plot1$xlabel, levels = levels(Him_plot1$xlabel)[order(first_numbers)])
+
+# Print the reordered factor levels to verify
+levels(Him_plot1$xlabel)
+
+
+# Step 2: Create the plot
+ggplot(Him_plot1, aes(x = xlabel, y = freq, fill = as.factor(summit))) +
+geom_bar(stat = "identity", position = position_dodge()) + scale_fill_manual(values = c("0" = "blue", "1" = "red"), labels = c("0" = "Failed", "1" = "Success"), name = "Summits") + labs(x = "Yearly Congestion", y = "Frequency", title = "Summit Frequency Counts by Congestion") + theme(axis.text.x = element_text(angle = 30), plot.title = element_text(hjust = 0.5))
+ 
+```
+
+```{r}
+##Creates Everest Dataset
+EVER_data <- filter(Him_filtered, Him_filtered$peakid=="EVER")
+
+##Creates Plot for Everest Dataset 
+EVER_plot1 <- EVER_data %>%
+  mutate(total_members_range = cut(total_members, breaks = seq(0, 1300, by = 100), include.lowest = TRUE)) %>%
+  group_by(total_members_range, summit) %>%
+  summarise(freq = n(), .groups = 'drop')
+
+EVER_plot1$xlabel <- ordered(c("0,100","0,100", "100,200","100,200", "200,300","200,300", "300,400","300,400", "400,500","400,500", "500,600","500,600", "600,700","600,700", "700,800","700,800", "800,900","800,900", "900,1000","900,1000", "1000,1100","1000,1100", "1100,1200","1100,1200", "1200,1300", "1200,1300"))
+
+#EVER_plot1$xlabel <- as.factor(EVER_plot1$xlabel)
+#EVER_plot1$xlabel <- factor(levels = ("0-100", "100-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700-800", "800-900", "900-1000", "1000-1100", "1100-1200", "1200-1300"))
+
+# Extract the first number from each range
+first_numbers <- as.numeric(gsub(",.*", "", levels(EVER_plot1$xlabel)))
+
+# Create a new ordered factor with levels sorted by the first number
+EVER_plot1$xlabel <- factor(EVER_plot1$xlabel, levels = levels(EVER_plot1$xlabel)[order(first_numbers)])
+
+# Print the reordered factor levels to verify
+levels(EVER_plot1$xlabel)
+
+
+# Step 2: Create the plot
+ggplot(EVER_plot1, aes(x = xlabel, y = freq, fill = as.factor(summit))) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("0" = "blue", "1" = "red"), name = "Summits") +
+  labs(x = "Yearly Congestion", y = "Frequency", title = "Everest Expedition Summit Frequency Counts by Congestion") + theme(axis.text.x = element_text(angle = -30))
+```
+
+```{r}
+plot(EVER_data$year,EVER_data$total_members)
+```
+
+```{r}
+#Creates route plot
+route_plot <- data.frame(
+  summit = c(0, 0, 1, 1),
+  route = c(0, 1, 0, 1),
+  frequency = c(583, 2765, 335, 4345) )
+
+ggplot(route_plot, aes(x = as.factor(route), y = frequency, fill = as.factor(summit))) + geom_bar(stat = "identity", position = "dodge") + scale_fill_manual(values = c("0" = "red", "1" = "blue"), labels = c("Failed", "Success"), name = "Summit") + labs(x = "Route", y = "Frequency", title = "Summit Frequency Counts by Route") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+note threshhold
+
+
+This makes it not Knit!!
+``{r, include=FALSE}
+ggplot(Him_plot3, aes(x = as.factor(year), y = freq, fill = as.factor(summit))) +
+  geom_bar(stat = "identity", position = position_dodge()) + scale_fill_manual(values = c("0" = "red", "1" = "blue"), labels = c("0" = "Failed", "1" = "Success"), name = "Summits") + scale_x_discrete(breaks = seq(min(Him_plot1$year), max(Him_plot1$year), by = 5)) + labs(x = "Year", y = "Frequency", title = "Summit Frequency Counts by Year") + theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+```{r}
+```
