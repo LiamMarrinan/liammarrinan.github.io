@@ -1,7 +1,107 @@
-<html>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liam Marrinan - Code Portfolio</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            overflow: hidden;
+            padding: 20px;
+        }
+        header {
+            background: #333;
+            color: #fff;
+            padding-top: 30px;
+            min-height: 70px;
+            border-bottom: #0779e4 3px solid;
+        }
+        header a {
+            color: #fff;
+            text-decoration: none;
+            text-transform: uppercase;
+            font-size: 16px;
+        }
+        header ul {
+            padding: 0;
+            list-style: none;
+        }
+        header li {
+            display: inline;
+            padding: 0 20px 0 20px;
+        }
+        header #branding {
+            float: left;
+        }
+        header #branding h1 {
+            margin: 0;
+        }
+        header nav {
+            float: right;
+            margin-top: 10px;
+        }
+        .profile-img {
+            width: 200px;
+            border-radius: 50%;
+        }
+        .code-section {
+            background: #fff;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
 <body>
-  <h1>Liam Marrinan</h1>
-  <p>Welcome to my website! It is still in development, though I hope to have it up and running soon.</p>
+    <header>
+        <div class="container">
+            <div id="branding">
+                <h1>Liam Marrinan</h1>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#intro">Intro</a></li>
+                    <li><a href="#stata">Stata</a></li>
+                    <li><a href="#r">R</a></li>
+                    <li><a href="#python">Python</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
 
+    <div class="container">
+        <section id="intro">
+            <h2>Introduction</h2>
+            <img src="placeholder-image.jpg" alt="Liam Marrinan" class="profile-img">
+            <p>Welcome to my code portfolio! I'm [Liam Marrinan], a [Your Profession/Title]. This website showcases some of my work in Stata, R, and Python.</p>
+        </section>
+
+        <section id="stata" class="code-section">
+            <h2>Stata Code</h2>
+            <p>Here are some examples of my Stata code:</p>
+            <!-- Add your Stata code snippets or links to GitHub repositories here -->
+        </section>
+
+        <section id="r" class="code-section">
+            <h2>R Code</h2>
+            <p>Here are some examples of my R code:</p>
+            <!-- Add your R code snippets or links to GitHub repositories here -->
+        </section>
+
+        <section id="python" class="code-section">
+            <h2>Python Code</h2>
+            <p>Here are some examples of my Python code:</p>
+            <!-- Add your Python code snippets or links to GitHub repositories here -->
+        </section>
+    </div>
+</body>
 </html>
